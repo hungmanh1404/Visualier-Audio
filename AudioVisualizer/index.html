@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Cloud Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="overlay">
+        <div class="content">
+            <h1>Audio Cloud</h1>
+            <p><strong>Want to visualize YouTube?</strong></p>
+            <p>1. Click "Select Music Source" below.<br>
+                2. Choose the <strong>"Chrome Tab"</strong> tab.<br>
+                3. Select your <strong>YouTube</strong> tab.<br>
+                4. <strong>IMPORTANT:</strong> Check the <strong>"Share Audio"</strong> box.</p>
+            <div class="buttons">
+                <button id="btn-system">Select Music Source (YouTube/Spotify)</button>
+                <button id="btn-mic">Microphone</button>
+                <button id="btn-demo" style="background: rgba(255,255,255,0.3);">Demo Mode</button>
+            </div>
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <!-- Import map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="visualizer.js"></script>
+</body>
+
+</html>
