@@ -82,6 +82,8 @@ button {
     border-radius: 30px;
     transition: all 0.3s ease;
     backdrop-filter: blur(5px);
+    position: relative;
+    z-index: 25;
 }
 
 button:hover {
@@ -92,4 +94,46 @@ button:hover {
 
 button:active {
     transform: translateY(0);
+}
+
+#controls {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    border-radius: 50px;
+    backdrop-filter: blur(10px);
+    transition: opacity 0.5s ease;
+}
+
+#controls.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mode-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+    padding: 8px 20px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-radius: 20px;
+    transition: all 0.3s ease;
+}
+
+.mode-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.mode-btn.active {
+    background: white;
+    color: black;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
 }
