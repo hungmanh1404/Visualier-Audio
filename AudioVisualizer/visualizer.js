@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 const CONFIG = {
     fftSize: 2048,
     smoothingTimeConstant: 0.85,
-    bloomStrength: 1.5,
+    bloomStrength: 2.5, // Increased for more glow
     bloomRadius: 0.4,
     bloomThreshold: 0.1
 };
@@ -69,25 +69,44 @@ class CosmicEffect {
     }
 
     init() {
-        const particleCount = 15000;
+        // Shared Uniforms
+        this.uniforms = {
+            uTime: { value: 0 },
+            uAudioLow: { value: 0 },
+            uAudioMid: { value: 0 },
+            uAudioHigh: { value: 0 }
+        };
+
+        // 1. Central Rainbow Galaxy
+        this.initGalaxy();
+
+        // 2. Aurora Halo (The "Crown")
+        this.initAuroraHalo();
+
+        // 3. Distant Starfield (The "Vastness")
+        this.initStarfield();
+    }
+
+    initGalaxy() {
+        const particleCount = 40000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const scales = new Float32Array(particleCount);
         const randomness = new Float32Array(particleCount * 3);
 
+        const radius = 30.0;
+        const height = 120.0;
+
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
-            const radius = Math.random() * 10 + 2;
-            const spinAngle = radius * 0.5;
-            const branchAngle = (i % 3) * ((2 * Math.PI) / 3);
 
-            const randomX = Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * 2;
-            const randomY = Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * 2;
-            const randomZ = Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * 2;
+            const r = Math.random() * radius + 5;
+            const theta = Math.random() * Math.PI * 2;
+            const y = (Math.random() - 0.5) * height;
 
-            positions[i3] = Math.cos(branchAngle + spinAngle) * radius + randomX;
-            positions[i3 + 1] = randomY * 2;
-            positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+            positions[i3] = Math.cos(theta) * r;
+            positions[i3 + 1] = y;
+            positions[i3 + 2] = Math.sin(theta) * r;
 
             scales[i] = Math.random();
             randomness[i3] = Math.random();
@@ -99,14 +118,8 @@ class CosmicEffect {
         geometry.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
         geometry.setAttribute('aRandomness', new THREE.BufferAttribute(randomness, 3));
 
-        this.uniforms = {
-            uTime: { value: 0 },
-            uAudioLow: { value: 0 },
-            uAudioMid: { value: 0 },
-            uAudioHigh: { value: 0 }
-        };
-
         const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
             vertexShader: `
                 uniform float uTime;
                 uniform float uAudioLow;
@@ -115,59 +128,215 @@ class CosmicEffect {
                 attribute float aScale;
                 attribute vec3 aRandomness;
                 varying vec3 vColor;
+                varying float vAlpha;
+
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
                 void main() {
                     vec3 pos = position;
-                    float angle = uTime * 0.1 + length(pos.xy) * 0.5;
+                    
+                    // Dynamic Rotation handled in JS for the group, 
+                    // but we add internal turbulence here
+                    float angle = uTime * 0.1 + aRandomness.x; 
                     float c = cos(angle); float s = sin(angle);
-                    vec3 rotatedPos = vec3(pos.x * c - pos.y * s, pos.x * s + pos.y * c, pos.z);
-                    rotatedPos += normalize(rotatedPos) * uAudioLow * 2.0 * aRandomness.x;
-                    rotatedPos.x += sin(uTime * 2.0 + pos.y) * uAudioMid * aRandomness.y;
-                    rotatedPos.y += cos(uTime * 2.0 + pos.x) * uAudioMid * aRandomness.y;
-                    rotatedPos.z += uAudioHigh * 5.0 * aRandomness.z;
+                    vec3 rotatedPos = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
+                    
+                    // Beat Expansion
+                    float beat = 1.0 + uAudioLow * 0.3;
+                    rotatedPos.x *= beat;
+                    rotatedPos.z *= beat;
+
                     vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
                     gl_Position = projectionMatrix * mvPosition;
-                    gl_PointSize = aScale * (300.0 / -mvPosition.z);
-                    vec3 color1 = vec3(0.1, 0.0, 0.3);
-                    vec3 color2 = vec3(0.0, 0.5, 1.0);
-                    vec3 color3 = vec3(1.0, 0.2, 0.5);
-                    vec3 color4 = vec3(1.0, 0.9, 0.4);
-                    float mix1 = smoothstep(-5.0, 5.0, pos.x);
-                    vec3 baseColor = mix(color1, color2, mix1);
-                    vColor = mix(baseColor, color3, uAudioMid);
-                    vColor = mix(vColor, color4, uAudioHigh * aRandomness.z);
+                    
+                    gl_PointSize = aScale * (250.0 / -mvPosition.z);
+                    
+                    // Rainbow Gradient
+                    float hue = (atan(pos.z, pos.x) / 6.28) + (pos.y * 0.002) - (uTime * 0.1);
+                    float sat = 0.7 + uAudioMid * 0.3;
+                    float val = 0.8 + uAudioHigh * 0.5;
+                    
+                    vColor = hsv2rgb(vec3(hue, sat, val));
+                    vAlpha = 0.8 * (1.0 - smoothstep(50.0, 60.0, abs(pos.y)));
                 }
             `,
             fragmentShader: `
                 varying vec3 vColor;
+                varying float vAlpha;
                 void main() {
-                    float strength = distance(gl_PointCoord, vec2(0.5));
-                    strength = 1.0 - strength;
-                    strength = pow(strength, 3.0);
-                    gl_FragColor = vec4(vColor * strength, strength);
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+                    float glow = exp(-dist * 4.0);
+                    if (glow < 0.01) discard;
+                    gl_FragColor = vec4(vColor, vAlpha * glow);
                 }
             `,
-            uniforms: this.uniforms,
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending
         });
 
-        this.mesh = new THREE.Points(geometry, material);
-        this.group.add(this.mesh);
+        this.galaxyMesh = new THREE.Points(geometry, material);
+        this.group.add(this.galaxyMesh);
+    }
+
+    initAuroraHalo() {
+        // A large cylinder surrounding the galaxy
+        const geometry = new THREE.CylinderGeometry(60, 60, 40, 64, 1, true);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            side: THREE.DoubleSide,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vPos;
+                void main() {
+                    vUv = uv;
+                    vPos = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                uniform float uAudioHigh;
+                varying vec2 vUv;
+                varying vec3 vPos;
+
+                // Simplex Noise function (simplified)
+                vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+                float snoise(vec2 v){
+                    const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                            -0.577350269189626, 0.024390243902439);
+                    vec2 i  = floor(v + dot(v, C.yy) );
+                    vec2 x0 = v -   i + dot(i, C.xx);
+                    vec2 i1;
+                    i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                    vec4 x12 = x0.xyxy + C.xxzz;
+                    x12.xy -= i1;
+                    i = mod(i, 289.0);
+                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+                        + i.x + vec3(0.0, i1.x, 1.0 ));
+                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                    m = m*m ;
+                    m = m*m ;
+                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                    vec3 h = abs(x) - 0.5;
+                    vec3 ox = floor(x + 0.5);
+                    vec3 a0 = x - ox;
+                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                    vec3 g;
+                    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                    return 130.0 * dot(m, g);
+                }
+
+                void main() {
+                    // Waving curtain effect
+                    float noise = snoise(vec2(vUv.x * 10.0, vUv.y * 2.0 - uTime * 0.5));
+                    float alpha = smoothstep(0.0, 1.0, noise * 0.5 + 0.5);
+                    
+                    // Fade top and bottom
+                    float edgeFade = 1.0 - abs(vUv.y - 0.5) * 2.0;
+                    alpha *= edgeFade;
+
+                    // Color Shift
+                    vec3 colorA = vec3(0.0, 1.0, 0.8); // Cyan
+                    vec3 colorB = vec3(0.8, 0.0, 1.0); // Purple
+                    vec3 color = mix(colorA, colorB, vUv.y + sin(uTime));
+                    
+                    // Beat flash
+                    color += vec3(uAudioHigh * 0.5);
+
+                    gl_FragColor = vec4(color, alpha * 0.4 * (1.0 + uAudioLow));
+                }
+            `
+        });
+
+        this.auroraMesh = new THREE.Mesh(geometry, material);
+        this.group.add(this.auroraMesh);
+    }
+
+    initStarfield() {
+        const count = 2000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const r = 400 + Math.random() * 200; // Distant shell
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = r * Math.cos(phi);
+
+            sizes[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aScale', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            transparent: true,
+            vertexShader: `
+                uniform float uTime;
+                attribute float aScale;
+                void main() {
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    float twinkle = 1.0 + sin(uTime * 2.0 + position.x) * 0.5;
+                    gl_PointSize = aScale * (500.0 / -mvPosition.z) * twinkle;
+                }
+            `,
+            fragmentShader: `
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+                    if(dist > 0.5) discard;
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 0.8 - dist);
+                }
+            `
+        });
+
+        this.starMesh = new THREE.Points(geometry, material);
+        this.group.add(this.starMesh);
     }
 
     update(time, audioData) {
         this.uniforms.uTime.value = time;
-        this.uniforms.uAudioLow.value = audioData.low;
-        this.uniforms.uAudioMid.value = audioData.mid;
-        this.uniforms.uAudioHigh.value = audioData.high;
-        this.mesh.rotation.y = time * 0.05;
+        this.uniforms.uAudioLow.value = THREE.MathUtils.lerp(this.uniforms.uAudioLow.value, audioData.low, 0.1);
+        this.uniforms.uAudioMid.value = THREE.MathUtils.lerp(this.uniforms.uAudioMid.value, audioData.mid, 0.1);
+        this.uniforms.uAudioHigh.value = THREE.MathUtils.lerp(this.uniforms.uAudioHigh.value, audioData.high, 0.1);
+
+        // Dynamic Rotation Speed
+        // Base speed + Bass boost
+        const rotationSpeed = 0.05 + (this.uniforms.uAudioLow.value * 0.2);
+
+        this.group.rotation.y += rotationSpeed * 0.016; // Assume 60fps delta roughly
+
+        // Gentle tilt
+        this.group.rotation.z = Math.sin(time * 0.1) * 0.1;
+        this.group.rotation.x = Math.cos(time * 0.1) * 0.1;
     }
 
     dispose() {
         this.scene.remove(this.group);
-        this.mesh.geometry.dispose();
-        this.mesh.material.dispose();
+        this.galaxyMesh.geometry.dispose();
+        this.galaxyMesh.material.dispose();
+        this.auroraMesh.geometry.dispose();
+        this.auroraMesh.material.dispose();
+        this.starMesh.geometry.dispose();
+        this.starMesh.material.dispose();
     }
 }
 
