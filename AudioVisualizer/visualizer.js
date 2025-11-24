@@ -80,11 +80,17 @@ class CosmicEffect {
         // 1. Central Rainbow Galaxy
         this.initGalaxy();
 
-        // 2. Aurora Halo (The "Crown")
+        // 2. The Black Hole (Event Horizon + Accretion Disk)
+        this.initGalaxyCore();
+
+        // 3. Aurora Halo (Seamless)
         this.initAuroraHalo();
 
-        // 3. Distant Starfield (The "Vastness")
+        // 4. Distant Starfield (Parallax)
         this.initStarfield();
+
+        // 5. Shooting Stars
+        this.initShootingStars();
     }
 
     initGalaxy() {
@@ -99,7 +105,6 @@ class CosmicEffect {
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
-
             const r = Math.random() * radius + 5;
             const theta = Math.random() * Math.PI * 2;
             const y = (Math.random() - 0.5) * height;
@@ -139,13 +144,10 @@ class CosmicEffect {
                 void main() {
                     vec3 pos = position;
                     
-                    // Dynamic Rotation handled in JS for the group, 
-                    // but we add internal turbulence here
                     float angle = uTime * 0.1 + aRandomness.x; 
                     float c = cos(angle); float s = sin(angle);
                     vec3 rotatedPos = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
                     
-                    // Beat Expansion
                     float beat = 1.0 + uAudioLow * 0.3;
                     rotatedPos.x *= beat;
                     rotatedPos.z *= beat;
@@ -155,7 +157,6 @@ class CosmicEffect {
                     
                     gl_PointSize = aScale * (250.0 / -mvPosition.z);
                     
-                    // Rainbow Gradient
                     float hue = (atan(pos.z, pos.x) / 6.28) + (pos.y * 0.002) - (uTime * 0.1);
                     float sat = 0.7 + uAudioMid * 0.3;
                     float val = 0.8 + uAudioHigh * 0.5;
@@ -184,10 +185,99 @@ class CosmicEffect {
         this.group.add(this.galaxyMesh);
     }
 
-    initAuroraHalo() {
-        // A large cylinder surrounding the galaxy
-        const geometry = new THREE.CylinderGeometry(60, 60, 40, 64, 1, true);
+    initGalaxyCore() {
+        // 1. The Event Horizon (Pure Black Void)
+        const horizonGeo = new THREE.SphereGeometry(4, 64, 64);
+        const horizonMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        this.eventHorizon = new THREE.Mesh(horizonGeo, horizonMat);
+        this.group.add(this.eventHorizon);
 
+        // 2. The Accretion Disk (Colorful Swirl)
+        const particleCount = 10000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const randomness = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const r = 5 + Math.random() * 15;
+            const theta = Math.random() * Math.PI * 2;
+            const y = (Math.random() - 0.5) * (r * 0.1);
+
+            positions[i * 3] = r * Math.cos(theta);
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = r * Math.sin(theta);
+
+            randomness[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandomness', new THREE.BufferAttribute(randomness, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                uniform float uAudioMid;
+                uniform float uAudioHigh;
+                attribute float aRandomness;
+                varying vec3 vColor;
+                varying float vAlpha;
+
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                void main() {
+                    vec3 pos = position;
+                    float r = length(pos.xz);
+                    
+                    float speed = (20.0 / r) * (1.0 + uAudioLow * 0.5);
+                    float angle = uTime * 0.5 * speed + aRandomness;
+                    
+                    float c = cos(angle); float s = sin(angle);
+                    pos = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
+
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    
+                    gl_PointSize = (3.0 + aRandomness * 3.0) * (100.0 / -mvPosition.z);
+                    
+                    // Rainbow Color Logic - DARKER / DEEPER (No Glare)
+                    float hue = (atan(pos.z, pos.x) / 6.28) - (uTime * 0.2) + (10.0/r);
+                    float sat = 0.9 + uAudioMid * 0.1;
+                    float val = 0.6 + uAudioHigh * 0.4; // Reduced brightness
+                    
+                    vColor = hsv2rgb(vec3(hue, sat, val));
+                    
+                    float alpha = smoothstep(4.0, 5.0, r) * (1.0 - smoothstep(15.0, 20.0, r));
+                    vAlpha = alpha * 0.6; 
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vAlpha;
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+                    float glow = exp(-dist * 4.0);
+                    if (glow < 0.01) discard;
+                    gl_FragColor = vec4(vColor, vAlpha * glow);
+                }
+            `
+        });
+
+        this.diskMesh = new THREE.Points(geometry, material);
+        this.group.add(this.diskMesh);
+    }
+
+    initAuroraHalo() {
+        const geometry = new THREE.CylinderGeometry(60, 60, 40, 128, 1, true);
         const material = new THREE.ShaderMaterial({
             uniforms: this.uniforms,
             side: THREE.DoubleSide,
@@ -210,80 +300,98 @@ class CosmicEffect {
                 varying vec2 vUv;
                 varying vec3 vPos;
 
-                // Simplex Noise function (simplified)
-                vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
-                float snoise(vec2 v){
-                    const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-                            -0.577350269189626, 0.024390243902439);
-                    vec2 i  = floor(v + dot(v, C.yy) );
-                    vec2 x0 = v -   i + dot(i, C.xx);
-                    vec2 i1;
-                    i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                    vec4 x12 = x0.xyxy + C.xxzz;
-                    x12.xy -= i1;
-                    i = mod(i, 289.0);
-                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
-                        + i.x + vec3(0.0, i1.x, 1.0 ));
-                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                    m = m*m ;
-                    m = m*m ;
-                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
-                    vec3 h = abs(x) - 0.5;
-                    vec3 ox = floor(x + 0.5);
-                    vec3 a0 = x - ox;
-                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                    vec3 g;
-                    g.x  = a0.x  * x0.x  + h.x  * x0.y;
-                    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                    return 130.0 * dot(m, g);
+                // Simplex 3D Noise 
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+                float snoise(vec3 v) { 
+                    const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                    const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy) );
+                    vec3 x0 = v - i + dot(i, C.xxx) ;
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min( g.xyz, l.zxy );
+                    vec3 i2 = max( g.xyz, l.zxy );
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+                    i = mod289(i); 
+                    vec4 p = permute( permute( permute( 
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                    float n_ = 0.142857142857;
+                    vec3  ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_ );
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4( x.xy, y.xy );
+                    vec4 b1 = vec4( x.zw, y.zw );
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                    vec3 p0 = vec3(a0.xy,h.x);
+                    vec3 p1 = vec3(a0.zw,h.y);
+                    vec3 p2 = vec3(a1.xy,h.z);
+                    vec3 p3 = vec3(a1.zw,h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
                 }
 
                 void main() {
-                    // Waving curtain effect
-                    float noise = snoise(vec2(vUv.x * 10.0, vUv.y * 2.0 - uTime * 0.5));
+                    float theta = vUv.x * 6.2831853;
+                    vec3 noisePos = vec3(cos(theta), sin(theta), vUv.y * 2.0 - uTime * 0.3);
+                    float noise = snoise(noisePos * 2.0);
                     float alpha = smoothstep(0.0, 1.0, noise * 0.5 + 0.5);
-                    
-                    // Fade top and bottom
                     float edgeFade = 1.0 - abs(vUv.y - 0.5) * 2.0;
                     alpha *= edgeFade;
-
-                    // Color Shift
-                    vec3 colorA = vec3(0.0, 1.0, 0.8); // Cyan
-                    vec3 colorB = vec3(0.8, 0.0, 1.0); // Purple
+                    vec3 colorA = vec3(0.0, 1.0, 0.8); 
+                    vec3 colorB = vec3(0.8, 0.0, 1.0); 
                     vec3 color = mix(colorA, colorB, vUv.y + sin(uTime));
-                    
-                    // Beat flash
                     color += vec3(uAudioHigh * 0.5);
-
                     gl_FragColor = vec4(color, alpha * 0.4 * (1.0 + uAudioLow));
                 }
             `
         });
-
         this.auroraMesh = new THREE.Mesh(geometry, material);
         this.group.add(this.auroraMesh);
     }
 
     initStarfield() {
-        const count = 2000;
+        const count = 3000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(count * 3);
         const sizes = new Float32Array(count);
+        const speeds = new Float32Array(count);
 
         for (let i = 0; i < count; i++) {
-            const r = 400 + Math.random() * 200; // Distant shell
+            const r = 300 + Math.random() * 300;
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
-
             positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
             positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
             positions[i * 3 + 2] = r * Math.cos(phi);
-
             sizes[i] = Math.random();
+            speeds[i] = Math.random();
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('aScale', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
 
         const material = new THREE.ShaderMaterial({
             uniforms: this.uniforms,
@@ -291,11 +399,12 @@ class CosmicEffect {
             vertexShader: `
                 uniform float uTime;
                 attribute float aScale;
+                attribute float aSpeed;
                 void main() {
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                     gl_Position = projectionMatrix * mvPosition;
-                    float twinkle = 1.0 + sin(uTime * 2.0 + position.x) * 0.5;
-                    gl_PointSize = aScale * (500.0 / -mvPosition.z) * twinkle;
+                    float twinkle = 1.0 + sin(uTime * (1.0 + aSpeed * 3.0) + position.x) * 0.5;
+                    gl_PointSize = aScale * (400.0 / -mvPosition.z) * twinkle;
                 }
             `,
             fragmentShader: `
@@ -303,13 +412,91 @@ class CosmicEffect {
                     vec2 uv = gl_PointCoord - 0.5;
                     float dist = length(uv);
                     if(dist > 0.5) discard;
-                    gl_FragColor = vec4(1.0, 1.0, 1.0, 0.8 - dist);
+                    float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
                 }
             `
         });
-
         this.starMesh = new THREE.Points(geometry, material);
         this.group.add(this.starMesh);
+    }
+
+    initShootingStars() {
+        this.shootingStars = [];
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(6);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        this.shootingStarMaterial = new THREE.LineBasicMaterial({
+            color: 0xaaddff,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        for (let i = 0; i < 8; i++) {
+            const star = new THREE.Line(geometry.clone(), this.shootingStarMaterial);
+            star.visible = false;
+            this.group.add(star);
+            this.shootingStars.push({
+                mesh: star,
+                active: false,
+                progress: 0,
+                speed: 0,
+                startPos: new THREE.Vector3(),
+                endPos: new THREE.Vector3()
+            });
+        }
+    }
+
+    spawnShootingStar() {
+        const star = this.shootingStars.find(s => !s.active);
+        if (!star) return;
+
+        star.active = true;
+        star.mesh.visible = true;
+        star.progress = 0;
+        star.speed = 0.005 + Math.random() * 0.01;
+
+        const r = 150;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        star.startPos.set(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.sin(phi) * Math.sin(theta),
+            r * Math.cos(phi)
+        );
+
+        star.endPos.copy(star.startPos).add(new THREE.Vector3(
+            (Math.random() - 0.5) * 200,
+            (Math.random() - 0.5) * 200,
+            (Math.random() - 0.5) * 200
+        ));
+    }
+
+    updateShootingStars() {
+        if (Math.random() < 0.02) this.spawnShootingStar();
+
+        this.shootingStars.forEach(star => {
+            if (!star.active) return;
+
+            star.progress += star.speed;
+            if (star.progress >= 1) {
+                star.active = false;
+                star.mesh.visible = false;
+                return;
+            }
+
+            const currentPos = new THREE.Vector3().lerpVectors(star.startPos, star.endPos, star.progress);
+            const tailPos = new THREE.Vector3().lerpVectors(star.startPos, star.endPos, Math.max(0, star.progress - 0.1));
+
+            const positions = star.mesh.geometry.attributes.position.array;
+            positions[0] = currentPos.x; positions[1] = currentPos.y; positions[2] = currentPos.z;
+            positions[3] = tailPos.x; positions[4] = tailPos.y; positions[5] = tailPos.z;
+            star.mesh.geometry.attributes.position.needsUpdate = true;
+
+            star.mesh.material.opacity = 1.0 - star.progress;
+        });
     }
 
     update(time, audioData) {
@@ -318,25 +505,36 @@ class CosmicEffect {
         this.uniforms.uAudioMid.value = THREE.MathUtils.lerp(this.uniforms.uAudioMid.value, audioData.mid, 0.1);
         this.uniforms.uAudioHigh.value = THREE.MathUtils.lerp(this.uniforms.uAudioHigh.value, audioData.high, 0.1);
 
-        // Dynamic Rotation Speed
-        // Base speed + Bass boost
+        // Dynamic Rotation
         const rotationSpeed = 0.05 + (this.uniforms.uAudioLow.value * 0.2);
+        this.group.rotation.y += rotationSpeed * 0.016;
 
-        this.group.rotation.y += rotationSpeed * 0.016; // Assume 60fps delta roughly
-
-        // Gentle tilt
+        // Cinematic Camera Motion (Lissajous Curve)
+        this.group.position.x = Math.sin(time * 0.2) * 5;
+        this.group.position.y = Math.cos(time * 0.15) * 5;
         this.group.rotation.z = Math.sin(time * 0.1) * 0.1;
-        this.group.rotation.x = Math.cos(time * 0.1) * 0.1;
+
+        // Update Shooting Stars
+        this.updateShootingStars();
     }
 
     dispose() {
         this.scene.remove(this.group);
-        this.galaxyMesh.geometry.dispose();
-        this.galaxyMesh.material.dispose();
-        this.auroraMesh.geometry.dispose();
-        this.auroraMesh.material.dispose();
-        this.starMesh.geometry.dispose();
-        this.starMesh.material.dispose();
+        if (this.galaxyMesh) { this.galaxyMesh.geometry.dispose(); this.galaxyMesh.material.dispose(); }
+        if (this.eventHorizon) { this.eventHorizon.geometry.dispose(); this.eventHorizon.material.dispose(); }
+        if (this.diskMesh) { this.diskMesh.geometry.dispose(); this.diskMesh.material.dispose(); }
+        if (this.auroraMesh) { this.auroraMesh.geometry.dispose(); this.auroraMesh.material.dispose(); }
+        if (this.starMesh) { this.starMesh.geometry.dispose(); this.starMesh.material.dispose(); }
+        if (this.shootingStars) {
+            this.shootingStars.forEach(s => {
+                s.mesh.geometry.dispose();
+                s.mesh.material.dispose();
+            });
+            // Dispose of the shared material only once if it's not unique per star
+            if (this.shootingStarMaterial) {
+                this.shootingStarMaterial.dispose();
+            }
+        }
     }
 }
 
@@ -1400,6 +1598,7 @@ class LightningStormEffect {
         this.sparkles.geometry.dispose();
         this.sparkles.material.dispose();
     }
+
 }
 
 class VisualizerManager {
@@ -1438,7 +1637,11 @@ class VisualizerManager {
 
     switchMode(mode) {
         if (this.currentEffect) {
-            this.currentEffect.dispose();
+            try {
+                this.currentEffect.dispose();
+            } catch (err) {
+                console.error("Error disposing effect:", err);
+            }
         }
 
         // Reset camera
