@@ -812,6 +812,391 @@ class LightShowEffect {
     }
 }
 
+// DancerEffect - A dancing humanoid character that reacts to music
+class DancerEffect {
+    constructor(scene) {
+        this.scene = scene;
+        this.group = new THREE.Group();
+        this.scene.add(this.group);
+        this.init();
+    }
+
+    init() {
+        // Create character parts with feminine curves
+        this.character = new THREE.Group();
+
+        // Beautiful gradient materials
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0xff69b4, // Hot pink
+            emissive: 0xff1493,
+            emissiveIntensity: 0.5,
+            metalness: 0.4,
+            roughness: 0.5
+        });
+
+        const limbMat = new THREE.MeshStandardMaterial({
+            color: 0xffa07a, // Light salmon
+            emissive: 0xff6347,
+            emissiveIntensity: 0.3,
+            metalness: 0.3,
+            roughness: 0.6
+        });
+
+        const accentMat = new THREE.MeshStandardMaterial({
+            color: 0x9370db, // Medium purple
+            emissive: 0x8a2be2,
+            emissiveIntensity: 0.4,
+            metalness: 0.5,
+            roughness: 0.4
+        });
+
+        // Head - more elegant
+        const headGeo = new THREE.SphereGeometry(0.8, 32, 32);
+        this.head = new THREE.Mesh(headGeo, bodyMat);
+        this.head.position.y = 7.5;
+        this.head.scale.set(1, 1.1, 1); // Slightly elongated
+        this.character.add(this.head);
+
+        // Hair/Crown decoration
+        const hairGeo = new THREE.SphereGeometry(0.9, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        this.hair = new THREE.Mesh(hairGeo, accentMat);
+        this.hair.position.y = 7.8;
+        this.character.add(this.hair);
+
+        // Neck
+        const neckGeo = new THREE.CylinderGeometry(0.3, 0.35, 0.8, 16);
+        this.neck = new THREE.Mesh(neckGeo, limbMat);
+        this.neck.position.y = 6.8;
+        this.character.add(this.neck);
+
+        // Torso - hourglass shape
+        const torsoGeo = new THREE.CylinderGeometry(0.6, 0.9, 2.5, 32);
+        this.torso = new THREE.Mesh(torsoGeo, bodyMat);
+        this.torso.position.y = 5;
+        this.torso.scale.set(1.2, 1, 0.8); // Wider at shoulders, narrower front-to-back
+        this.character.add(this.torso);
+
+        // Waist accent
+        const waistGeo = new THREE.TorusGeometry(0.5, 0.15, 16, 32);
+        this.waist = new THREE.Mesh(waistGeo, accentMat);
+        this.waist.position.y = 4.2;
+        this.waist.rotation.x = Math.PI / 2;
+        this.character.add(this.waist);
+
+        // Hips - curved
+        const hipsGeo = new THREE.SphereGeometry(1, 32, 32, 0, Math.PI * 2, 0, Math.PI / 2);
+        this.hips = new THREE.Mesh(hipsGeo, bodyMat);
+        this.hips.position.y = 3.5;
+        this.hips.scale.set(1.3, 0.8, 1); // Wide hips
+        this.hips.rotation.x = Math.PI;
+        this.character.add(this.hips);
+
+        // Arms - graceful
+        this.leftArm = new THREE.Group();
+        this.leftArm.position.set(-1.3, 5.8, 0);
+
+        const leftShoulderGeo = new THREE.SphereGeometry(0.35, 16, 16);
+        this.leftShoulder = new THREE.Mesh(leftShoulderGeo, limbMat);
+        this.leftArm.add(this.leftShoulder);
+
+        const leftUpperArmGeo = new THREE.CylinderGeometry(0.25, 0.22, 1.8, 16);
+        this.leftUpperArm = new THREE.Mesh(leftUpperArmGeo, limbMat);
+        this.leftUpperArm.position.y = -1;
+        this.leftArm.add(this.leftUpperArm);
+
+        this.leftForearm = new THREE.Group();
+        this.leftForearm.position.y = -1.9;
+        const leftForearmGeo = new THREE.CylinderGeometry(0.2, 0.15, 1.5, 16);
+        this.leftForearmMesh = new THREE.Mesh(leftForearmGeo, limbMat);
+        this.leftForearmMesh.position.y = -0.75;
+        this.leftForearm.add(this.leftForearmMesh);
+
+        // Hand
+        const leftHandGeo = new THREE.SphereGeometry(0.2, 16, 16);
+        this.leftHand = new THREE.Mesh(leftHandGeo, accentMat);
+        this.leftHand.position.y = -1.5;
+        this.leftHand.scale.set(0.8, 1.2, 0.7);
+        this.leftForearm.add(this.leftHand);
+
+        this.leftArm.add(this.leftForearm);
+        this.character.add(this.leftArm);
+
+        this.rightArm = new THREE.Group();
+        this.rightArm.position.set(1.3, 5.8, 0);
+
+        const rightShoulderGeo = new THREE.SphereGeometry(0.35, 16, 16);
+        this.rightShoulder = new THREE.Mesh(rightShoulderGeo, limbMat);
+        this.rightArm.add(this.rightShoulder);
+
+        const rightUpperArmGeo = new THREE.CylinderGeometry(0.25, 0.22, 1.8, 16);
+        this.rightUpperArm = new THREE.Mesh(rightUpperArmGeo, limbMat);
+        this.rightUpperArm.position.y = -1;
+        this.rightArm.add(this.rightUpperArm);
+
+        this.rightForearm = new THREE.Group();
+        this.rightForearm.position.y = -1.9;
+        const rightForearmGeo = new THREE.CylinderGeometry(0.2, 0.15, 1.5, 16);
+        this.rightForearmMesh = new THREE.Mesh(rightForearmGeo, limbMat);
+        this.rightForearmMesh.position.y = -0.75;
+        this.rightForearm.add(this.rightForearmMesh);
+
+        const rightHandGeo = new THREE.SphereGeometry(0.2, 16, 16);
+        this.rightHand = new THREE.Mesh(rightHandGeo, accentMat);
+        this.rightHand.position.y = -1.5;
+        this.rightHand.scale.set(0.8, 1.2, 0.7);
+        this.rightForearm.add(this.rightHand);
+
+        this.rightArm.add(this.rightForearm);
+        this.character.add(this.rightArm);
+
+        // Legs - elegant and curved
+        this.leftLeg = new THREE.Group();
+        this.leftLeg.position.set(-0.5, 3, 0);
+
+        const leftThighGeo = new THREE.CylinderGeometry(0.35, 0.3, 2, 16);
+        this.leftThigh = new THREE.Mesh(leftThighGeo, limbMat);
+        this.leftThigh.position.y = -1;
+        this.leftThigh.scale.set(1.2, 1, 1); // Slightly wider
+        this.leftLeg.add(this.leftThigh);
+
+        this.leftShin = new THREE.Group();
+        this.leftShin.position.y = -2;
+        const leftShinGeo = new THREE.CylinderGeometry(0.28, 0.22, 2, 16);
+        this.leftShinMesh = new THREE.Mesh(leftShinGeo, limbMat);
+        this.leftShinMesh.position.y = -1;
+        this.leftShin.add(this.leftShinMesh);
+
+        // Foot
+        const leftFootGeo = new THREE.BoxGeometry(0.3, 0.2, 0.6);
+        this.leftFoot = new THREE.Mesh(leftFootGeo, accentMat);
+        this.leftFoot.position.set(0, -2.1, 0.15);
+        this.leftShin.add(this.leftFoot);
+
+        this.leftLeg.add(this.leftShin);
+        this.character.add(this.leftLeg);
+
+        this.rightLeg = new THREE.Group();
+        this.rightLeg.position.set(0.5, 3, 0);
+
+        const rightThighGeo = new THREE.CylinderGeometry(0.35, 0.3, 2, 16);
+        this.rightThigh = new THREE.Mesh(rightThighGeo, limbMat);
+        this.rightThigh.position.y = -1;
+        this.rightThigh.scale.set(1.2, 1, 1);
+        this.rightLeg.add(this.rightThigh);
+
+        this.rightShin = new THREE.Group();
+        this.rightShin.position.y = -2;
+        const rightShinGeo = new THREE.CylinderGeometry(0.28, 0.22, 2, 16);
+        this.rightShinMesh = new THREE.Mesh(rightShinGeo, limbMat);
+        this.rightShinMesh.position.y = -1;
+        this.rightShin.add(this.rightShinMesh);
+
+        const rightFootGeo = new THREE.BoxGeometry(0.3, 0.2, 0.6);
+        this.rightFoot = new THREE.Mesh(rightFootGeo, accentMat);
+        this.rightFoot.position.set(0, -2.1, 0.15);
+        this.rightShin.add(this.rightFoot);
+
+        this.rightLeg.add(this.rightShin);
+        this.character.add(this.rightLeg);
+
+        this.group.add(this.character);
+
+        // Beautiful stage with gradient
+        const floorGeo = new THREE.CircleGeometry(20, 64);
+        const floorMat = new THREE.MeshStandardMaterial({
+            color: 0x2d1b4e,
+            metalness: 0.9,
+            roughness: 0.1,
+            emissive: 0x1a0033,
+            emissiveIntensity: 0.3
+        });
+        this.floor = new THREE.Mesh(floorGeo, floorMat);
+        this.floor.rotation.x = -Math.PI / 2;
+        this.floor.position.y = -1;
+        this.group.add(this.floor);
+
+        // Rim light effect on floor
+        const rimGeo = new THREE.RingGeometry(18, 20, 64);
+        const rimMat = new THREE.MeshBasicMaterial({
+            color: 0xff00ff,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        this.rim = new THREE.Mesh(rimGeo, rimMat);
+        this.rim.rotation.x = -Math.PI / 2;
+        this.rim.position.y = -0.9;
+        this.group.add(this.rim);
+
+        // Enhanced lighting
+        const keyLight = new THREE.SpotLight(0xff1493, 3);
+        keyLight.position.set(-8, 12, 8);
+        keyLight.angle = Math.PI / 5;
+        keyLight.penumbra = 0.6;
+        keyLight.target = this.character;
+        this.group.add(keyLight);
+
+        const fillLight = new THREE.SpotLight(0x00ffff, 2);
+        fillLight.position.set(8, 10, 6);
+        fillLight.angle = Math.PI / 5;
+        fillLight.penumbra = 0.6;
+        fillLight.target = this.character;
+        this.group.add(fillLight);
+
+        const backLight = new THREE.SpotLight(0x9370db, 2.5);
+        backLight.position.set(0, 8, -10);
+        backLight.angle = Math.PI / 4;
+        backLight.penumbra = 0.5;
+        backLight.target = this.character;
+        this.group.add(backLight);
+
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.6);
+        this.group.add(ambientLight);
+
+        // Beautiful particle effects
+        this.initParticles();
+    }
+
+    initParticles() {
+        const particleCount = 300;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const r = 8 + Math.random() * 5;
+            positions[i * 3] = r * Math.cos(theta);
+            positions[i * 3 + 1] = Math.random() * 15;
+            positions[i * 3 + 2] = r * Math.sin(theta);
+
+            // Rainbow colors
+            const color = new THREE.Color().setHSL(Math.random(), 0.8, 0.6);
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.4,
+            transparent: true,
+            opacity: 0.8,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.group.add(this.particles);
+    }
+
+    update(time, audioData, mouse, isDragging) {
+        // Graceful body sway
+        const sway = Math.sin(time * 2) * 0.15;
+        this.torso.rotation.z = sway;
+        this.hips.rotation.z = -sway * 0.5;
+
+        // Bass - Smooth bounce with hip movement
+        const bounce = Math.sin(time * 4 + audioData.low * 8) * audioData.low * 0.3;
+        this.character.position.y = bounce;
+
+        // Hip sway with bass
+        const hipSway = Math.sin(time * 3) * (0.2 + audioData.low * 0.3);
+        this.hips.rotation.y = hipSway;
+
+        // Leg dance - more graceful
+        const legSwing = Math.sin(time * 6) * (0.2 + audioData.low * 0.4);
+        this.leftLeg.rotation.x = legSwing;
+        this.rightLeg.rotation.x = -legSwing;
+
+        // Knee bend
+        const kneeAngle = Math.abs(Math.sin(time * 6)) * (0.15 + audioData.low * 0.25);
+        this.leftShin.rotation.x = -kneeAngle;
+        this.rightShin.rotation.x = -kneeAngle;
+
+        // Mids - Flowing arm movements
+        const armWave = Math.sin(time * 4) * (0.4 + audioData.mid * 1.2);
+        const armPhase = Math.cos(time * 4) * 0.3;
+
+        // Left arm - graceful wave
+        this.leftArm.rotation.z = Math.PI / 6 + armWave;
+        this.leftArm.rotation.x = armPhase;
+        this.leftForearm.rotation.x = -Math.abs(Math.sin(time * 4)) * (0.4 + audioData.mid * 0.6);
+        this.leftForearm.rotation.z = Math.sin(time * 5) * 0.3;
+
+        // Right arm - complementary movement
+        this.rightArm.rotation.z = -Math.PI / 6 - armWave * 0.8;
+        this.rightArm.rotation.x = -armPhase;
+        this.rightForearm.rotation.x = -Math.abs(Math.cos(time * 4 + 1)) * (0.4 + audioData.mid * 0.6);
+        this.rightForearm.rotation.z = -Math.sin(time * 5) * 0.3;
+
+        // Highs - Head movement and torso twist
+        this.head.rotation.y = Math.sin(time * 8) * (0.15 + audioData.high * 0.4);
+        this.head.rotation.z = Math.cos(time * 6) * 0.1;
+        this.head.position.y = 7.5 + Math.sin(time * 10) * audioData.high * 0.2;
+
+        // Torso twist
+        this.torso.rotation.y = Math.sin(time * 3) * (0.15 + audioData.mid * 0.25);
+
+        // Waist rotation
+        this.waist.rotation.z = time * 2 + audioData.mid * 2;
+
+        // Smooth character rotation
+        this.character.rotation.y = time * 0.2 + Math.sin(time * 0.5) * 0.3;
+
+        // Mouse interaction - character follows mouse gracefully
+        if (isDragging) {
+            this.character.rotation.y += mouse.x * 0.03;
+            this.torso.rotation.x = mouse.y * 0.1;
+        }
+
+        // Particle animation with color shift
+        this.particles.rotation.y = time * 0.4;
+        const positions = this.particles.geometry.attributes.position.array;
+        const colors = this.particles.geometry.attributes.color.array;
+
+        for (let i = 0; i < positions.length; i += 3) {
+            // Spiral upward
+            const angle = time * 2 + i * 0.1;
+            const radius = 8 + Math.sin(time + i * 0.5) * 2;
+            positions[i] = radius * Math.cos(angle);
+            positions[i + 2] = radius * Math.sin(angle);
+            positions[i + 1] += 0.03;
+
+            if (positions[i + 1] > 15) {
+                positions[i + 1] = 0;
+            }
+
+            // Color cycling
+            const hue = (time * 0.1 + i * 0.01) % 1;
+            const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
+            colors[i] = color.r;
+            colors[i + 1] = color.g;
+            colors[i + 2] = color.b;
+        }
+        this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.color.needsUpdate = true;
+
+        // Rim light pulse
+        this.rim.material.opacity = 0.3 + audioData.low * 0.4;
+    }
+
+    dispose() {
+        this.scene.remove(this.group);
+        // Dispose geometries and materials
+        this.character.traverse((child) => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        });
+        this.floor.geometry.dispose();
+        this.floor.material.dispose();
+        this.particles.geometry.dispose();
+        this.particles.material.dispose();
+    }
+}
+
 class FireworksEffect {
     constructor(scene) {
         this.scene = scene;
@@ -2595,6 +2980,11 @@ class VisualizerManager {
                 this.camera.position.set(0, 0, 50);
                 this.camera.lookAt(0, 0, 0);
                 this.currentEffect = new MultiverseEffect(this.scene);
+                break;
+            case 'dancer':
+                this.camera.position.set(0, 5, 20);
+                this.camera.lookAt(0, 3, 0);
+                this.currentEffect = new DancerEffect(this.scene);
                 break;
         }
     }
