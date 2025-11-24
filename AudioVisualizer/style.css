@@ -109,6 +109,9 @@ button:active {
     border-radius: 50px;
     backdrop-filter: blur(10px);
     transition: opacity 0.5s ease;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 90%;
 }
 
 #controls.hidden {

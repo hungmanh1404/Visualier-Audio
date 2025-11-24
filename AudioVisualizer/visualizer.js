@@ -1598,7 +1598,825 @@ class LightningStormEffect {
         this.sparkles.geometry.dispose();
         this.sparkles.material.dispose();
     }
+}
 
+class AudioReactorEffect {
+    constructor(scene) {
+        this.scene = scene;
+        this.group = new THREE.Group();
+        this.scene.add(this.group);
+        this.init();
+    }
+
+    init() {
+        this.uniforms = {
+            uTime: { value: 0 },
+            uAudioLow: { value: 0 },
+            uAudioMid: { value: 0 },
+            uAudioHigh: { value: 0 }
+        };
+
+        // 1. Reactor Core (Deforming Icosahedron)
+        const geometry = new THREE.IcosahedronGeometry(10, 4);
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            wireframe: true,
+            transparent: true,
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                varying vec3 vPos;
+                
+                // Simplex Noise
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+                float snoise(vec3 v) { 
+                    const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                    const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy) );
+                    vec3 x0 = v - i + dot(i, C.xxx) ;
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min( g.xyz, l.zxy );
+                    vec3 i2 = max( g.xyz, l.zxy );
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+                    i = mod289(i); 
+                    vec4 p = permute( permute( permute( 
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                    float n_ = 0.142857142857;
+                    vec3  ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_ );
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4( x.xy, y.xy );
+                    vec4 b1 = vec4( x.zw, y.zw );
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                    vec3 p0 = vec3(a0.xy,h.x);
+                    vec3 p1 = vec3(a0.zw,h.y);
+                    vec3 p2 = vec3(a1.xy,h.z);
+                    vec3 p3 = vec3(a1.zw,h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+                }
+
+                void main() {
+                    vPos = position;
+                    vec3 pos = position;
+                    
+                    // Bass Deformation
+                    float noise = snoise(pos * 0.2 + uTime);
+                    float spike = 1.0 + uAudioLow * 0.8 * noise; // Increased spike
+                    pos *= spike;
+
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                uniform float uAudioMid;
+                varying vec3 vPos;
+                
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                void main() {
+                    // Dynamic Color based on Mid frequencies
+                    float hue = 0.6 + uAudioMid * 0.4 + sin(uTime * 0.5) * 0.1; 
+                    vec3 color = hsv2rgb(vec3(hue, 1.0, 0.8));
+                    
+                    float glow = 0.5 + uAudioLow * 0.5;
+                    gl_FragColor = vec4(color, glow);
+                }
+            `
+        });
+        this.core = new THREE.Mesh(geometry, material);
+        this.group.add(this.core);
+
+        // 2. Orbital Rings
+        this.rings = [];
+        const ringGeo = new THREE.TorusGeometry(15, 0.2, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 });
+
+        for (let i = 0; i < 3; i++) {
+            const ring = new THREE.Mesh(ringGeo, ringMat.clone());
+            ring.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            this.rings.push({ mesh: ring, axis: new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize() });
+            this.group.add(ring);
+        }
+
+        // 3. Warp Grid (Enhanced)
+        const gridGeo = new THREE.PlaneGeometry(200, 200, 60, 60); // More segments for smoother waves
+        const gridMat = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            wireframe: true,
+            transparent: true,
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAudioHigh;
+                uniform float uAudioMid;
+                varying float vHeight;
+                varying vec2 vUv;
+                
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    
+                    // Liquid Wave Effect
+                    float d = length(pos.xy);
+                    float wave1 = sin(d * 0.1 - uTime * 2.0);
+                    float wave2 = cos(pos.x * 0.1 + uTime);
+                    float wave3 = sin(pos.y * 0.1 + uTime * 1.5);
+                    
+                    float z = (wave1 + wave2 + wave3) * (2.0 + uAudioMid * 5.0 + uAudioHigh * 5.0);
+                    pos.z = z;
+                    vHeight = z;
+
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uAudioMid;
+                uniform float uAudioHigh;
+                varying float vHeight;
+                varying vec2 vUv;
+
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                void main() {
+                    float alpha = 1.0 - smoothstep(0.0, 90.0, length(gl_FragCoord.xy - vec2(0.5))); 
+                    
+                    // Melody-based Color Shift
+                    float hue = 0.8 + uAudioMid * 0.5 + vUv.x * 0.2 + sin(uTime) * 0.1;
+                    vec3 color = hsv2rgb(vec3(hue, 0.8, 1.0));
+                    
+                    // Highlight peaks
+                    color += vec3(vHeight * 0.05);
+
+                    gl_FragColor = vec4(color, 0.4 + uAudioHigh * 0.2);
+                }
+            `
+        });
+
+        this.floorGrid = new THREE.Mesh(gridGeo, gridMat);
+        this.floorGrid.rotation.x = -Math.PI / 2;
+        this.floorGrid.position.y = -20;
+        this.group.add(this.floorGrid);
+
+        this.ceilGrid = new THREE.Mesh(gridGeo, gridMat);
+        this.ceilGrid.rotation.x = Math.PI / 2;
+        this.ceilGrid.position.y = 20;
+        this.group.add(this.ceilGrid);
+    }
+
+    update(time, audioData) {
+        this.uniforms.uTime.value = time;
+        // Smoother Lerp
+        this.uniforms.uAudioLow.value = THREE.MathUtils.lerp(this.uniforms.uAudioLow.value, audioData.low, 0.15);
+        this.uniforms.uAudioMid.value = THREE.MathUtils.lerp(this.uniforms.uAudioMid.value, audioData.mid, 0.15);
+        this.uniforms.uAudioHigh.value = THREE.MathUtils.lerp(this.uniforms.uAudioHigh.value, audioData.high, 0.15);
+
+        // Core Rotation
+        this.core.rotation.y += 0.01 + audioData.low * 0.05;
+        this.core.rotation.z += 0.01 + audioData.low * 0.05;
+
+        // Rings
+        this.rings.forEach((r, i) => {
+            r.mesh.rotateOnAxis(r.axis, 0.02 + audioData.mid * 0.1);
+            const scale = 1.0 + audioData.mid * 0.5;
+            r.mesh.scale.setScalar(scale);
+            r.mesh.material.color.setHSL((time * 0.2 + i * 0.3) % 1.0, 1.0, 0.5);
+        });
+
+        // Slight Grid Rotation for "Virtual" feel
+        this.floorGrid.rotation.z = Math.sin(time * 0.1) * 0.1;
+        this.ceilGrid.rotation.z = Math.cos(time * 0.1) * 0.1;
+    }
+
+    dispose() {
+        this.scene.remove(this.group);
+        this.core.geometry.dispose();
+        this.core.material.dispose();
+        this.rings.forEach(r => {
+            r.mesh.geometry.dispose();
+            r.mesh.material.dispose();
+        });
+        this.floorGrid.geometry.dispose();
+        this.floorGrid.material.dispose();
+        this.ceilGrid.geometry.dispose();
+        this.ceilGrid.material.dispose();
+    }
+}
+class MultiverseEffect {
+    constructor(scene) {
+        this.scene = scene;
+        this.group = new THREE.Group();
+        this.scene.add(this.group);
+        this.init();
+    }
+
+    init() {
+        this.uniforms = {
+            uTime: { value: 0 },
+            uAudioLow: { value: 0 },
+            uAudioMid: { value: 0 },
+            uAudioHigh: { value: 0 }
+        };
+
+        // 1. Reactor Core (Icosahedron)
+        this.initCore();
+
+        // 2. Black Hole Ring (Accretion Disk)
+        this.initBlackHoleRing();
+
+        // 3. Aurora Halo
+        this.initAuroraHalo();
+
+        // 4. Warp Grid
+        this.initWarpGrid();
+
+        // 5. Starfield + Shooting Stars
+        this.initStarfield();
+        this.initShootingStars();
+
+        // 6. Fireworks System
+        this.fireworks = [];
+    }
+
+    initCore() {
+        const geometry = new THREE.IcosahedronGeometry(8, 4);
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            wireframe: true,
+            transparent: true,
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                varying vec3 vPos;
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+                float snoise(vec3 v) { 
+                    const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                    const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy) );
+                    vec3 x0 = v - i + dot(i, C.xxx) ;
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min( g.xyz, l.zxy );
+                    vec3 i2 = max( g.xyz, l.zxy );
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+                    i = mod289(i); 
+                    vec4 p = permute( permute( permute( 
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                    float n_ = 0.142857142857;
+                    vec3  ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_ );
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4( x.xy, y.xy );
+                    vec4 b1 = vec4( x.zw, y.zw );
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                    vec3 p0 = vec3(a0.xy,h.x);
+                    vec3 p1 = vec3(a0.zw,h.y);
+                    vec3 p2 = vec3(a1.xy,h.z);
+                    vec3 p3 = vec3(a1.zw,h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+                }
+                void main() {
+                    vPos = position;
+                    vec3 pos = position;
+                    float noise = snoise(pos * 0.2 + uTime);
+                    float spike = 1.0 + uAudioLow * 0.5 * noise;
+                    pos *= spike;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uAudioLow;
+                varying vec3 vPos;
+                void main() {
+                    vec3 color = vec3(0.1, 0.5, 1.0); 
+                    color += vec3(uAudioLow * 0.8, 0.0, uAudioLow * 0.2); 
+                    float glow = 0.5 + uAudioLow * 0.5;
+                    gl_FragColor = vec4(color, glow);
+                }
+            `
+        });
+        this.core = new THREE.Mesh(geometry, material);
+        this.group.add(this.core);
+    }
+
+    initBlackHoleRing() {
+        const particleCount = 8000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const randomness = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const r = 12 + Math.random() * 15; // Larger radius to surround core
+            const theta = Math.random() * Math.PI * 2;
+            const y = (Math.random() - 0.5) * (r * 0.1);
+            positions[i * 3] = r * Math.cos(theta);
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = r * Math.sin(theta);
+            randomness[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandomness', new THREE.BufferAttribute(randomness, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                uniform float uAudioMid;
+                uniform float uAudioHigh;
+                attribute float aRandomness;
+                varying vec3 vColor;
+                varying float vAlpha;
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+                void main() {
+                    vec3 pos = position;
+                    float r = length(pos.xz);
+                    float speed = (20.0 / r) * (1.0 + uAudioLow * 0.5);
+                    float angle = uTime * 0.5 * speed + aRandomness;
+                    float c = cos(angle); float s = sin(angle);
+                    pos = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = (3.0 + aRandomness * 3.0) * (100.0 / -mvPosition.z);
+                    float hue = (atan(pos.z, pos.x) / 6.28) - (uTime * 0.2) + (10.0/r);
+                    float sat = 0.9 + uAudioMid * 0.1;
+                    float val = 0.6 + uAudioHigh * 0.4; 
+                    vColor = hsv2rgb(vec3(hue, sat, val));
+                    float alpha = smoothstep(10.0, 12.0, r) * (1.0 - smoothstep(25.0, 30.0, r));
+                    vAlpha = alpha * 0.6; 
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vAlpha;
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+                    float glow = exp(-dist * 4.0);
+                    if (glow < 0.01) discard;
+                    gl_FragColor = vec4(vColor, vAlpha * glow);
+                }
+            `
+        });
+
+        this.diskMesh = new THREE.Points(geometry, material);
+        this.group.add(this.diskMesh);
+    }
+
+    initAuroraHalo() {
+        const geometry = new THREE.CylinderGeometry(70, 70, 50, 64, 1, true);
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            side: THREE.DoubleSide,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uAudioLow;
+                varying vec2 vUv;
+                // Simplified noise
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+                float snoise(vec3 v) { 
+                    const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+                    const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy) );
+                    vec3 x0 = v - i + dot(i, C.xxx) ;
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min( g.xyz, l.zxy );
+                    vec3 i2 = max( g.xyz, l.zxy );
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+                    i = mod289(i); 
+                    vec4 p = permute( permute( permute( 
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                    float n_ = 0.142857142857;
+                    vec3  ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_ );
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4( x.xy, y.xy );
+                    vec4 b1 = vec4( x.zw, y.zw );
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                    vec3 p0 = vec3(a0.xy,h.x);
+                    vec3 p1 = vec3(a0.zw,h.y);
+                    vec3 p2 = vec3(a1.xy,h.z);
+                    vec3 p3 = vec3(a1.zw,h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+                }
+                void main() {
+                    float theta = vUv.x * 6.2831853;
+                    vec3 noisePos = vec3(cos(theta), sin(theta), vUv.y * 2.0 - uTime * 0.3);
+                    float noise = snoise(noisePos * 2.0);
+                    float alpha = smoothstep(0.0, 1.0, noise * 0.5 + 0.5);
+                    float edgeFade = 1.0 - abs(vUv.y - 0.5) * 2.0;
+                    alpha *= edgeFade;
+                    vec3 colorA = vec3(0.0, 1.0, 0.8); 
+                    vec3 colorB = vec3(0.8, 0.0, 1.0); 
+                    vec3 color = mix(colorA, colorB, vUv.y + sin(uTime));
+                    gl_FragColor = vec4(color, alpha * 0.4 * (1.0 + uAudioLow));
+                }
+            `
+        });
+        this.auroraMesh = new THREE.Mesh(geometry, material);
+        this.group.add(this.auroraMesh);
+    }
+
+    initWarpGrid() {
+        const gridGeo = new THREE.PlaneGeometry(300, 300, 60, 60); // More segments
+        const gridMat = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            wireframe: true,
+            transparent: true,
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAudioHigh;
+                uniform float uAudioMid;
+                varying float vHeight;
+                varying vec2 vUv;
+                
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    
+                    // Liquid Wave Effect
+                    float d = length(pos.xy);
+                    float wave1 = sin(d * 0.1 - uTime * 2.0);
+                    float wave2 = cos(pos.x * 0.1 + uTime);
+                    float wave3 = sin(pos.y * 0.1 + uTime * 1.5);
+                    
+                    float z = (wave1 + wave2 + wave3) * (2.0 + uAudioMid * 5.0 + uAudioHigh * 5.0);
+                    pos.z = z;
+                    vHeight = z;
+
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform float uAudioMid;
+                uniform float uAudioHigh;
+                varying float vHeight;
+                varying vec2 vUv;
+
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                void main() {
+                    float alpha = 1.0 - smoothstep(0.0, 120.0, length(gl_FragCoord.xy - vec2(0.5))); 
+                    
+                    // Melody-based Color Shift
+                    float hue = 0.8 + uAudioMid * 0.5 + vUv.x * 0.2 + sin(uTime) * 0.1;
+                    vec3 color = hsv2rgb(vec3(hue, 0.8, 1.0));
+                    
+                    // Highlight peaks
+                    color += vec3(vHeight * 0.05);
+
+                    gl_FragColor = vec4(color, 0.3 + uAudioHigh * 0.2);
+                }
+            `
+        });
+
+        this.floorGrid = new THREE.Mesh(gridGeo, gridMat);
+        this.floorGrid.rotation.x = -Math.PI / 2;
+        this.floorGrid.position.y = -30;
+        this.group.add(this.floorGrid);
+
+        this.ceilGrid = new THREE.Mesh(gridGeo, gridMat);
+        this.ceilGrid.rotation.x = Math.PI / 2;
+        this.ceilGrid.position.y = 30;
+        this.group.add(this.ceilGrid);
+    }
+
+    initStarfield() {
+        const count = 4000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const speeds = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const r = 300 + Math.random() * 300;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = r * Math.cos(phi);
+            sizes[i] = Math.random();
+            speeds[i] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aScale', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            transparent: true,
+            vertexShader: `
+                uniform float uTime;
+                attribute float aScale;
+                attribute float aSpeed;
+                void main() {
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    float twinkle = 1.0 + sin(uTime * (1.0 + aSpeed * 3.0) + position.x) * 0.5;
+                    gl_PointSize = aScale * (400.0 / -mvPosition.z) * twinkle;
+                }
+            `,
+            fragmentShader: `
+                void main() {
+                    vec2 uv = gl_PointCoord - 0.5;
+                    float dist = length(uv);
+                    if(dist > 0.5) discard;
+                    float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+                }
+            `
+        });
+        this.starMesh = new THREE.Points(geometry, material);
+        this.group.add(this.starMesh);
+    }
+
+    initShootingStars() {
+        this.shootingStars = [];
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(6);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        this.shootingStarMaterial = new THREE.LineBasicMaterial({
+            color: 0xaaddff,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        for (let i = 0; i < 10; i++) {
+            const star = new THREE.Line(geometry.clone(), this.shootingStarMaterial);
+            star.visible = false;
+            this.group.add(star);
+            this.shootingStars.push({
+                mesh: star,
+                active: false,
+                progress: 0,
+                speed: 0,
+                startPos: new THREE.Vector3(),
+                endPos: new THREE.Vector3()
+            });
+        }
+    }
+
+    spawnShootingStar() {
+        const star = this.shootingStars.find(s => !s.active);
+        if (!star) return;
+
+        star.active = true;
+        star.mesh.visible = true;
+        star.progress = 0;
+        star.speed = 0.005 + Math.random() * 0.01;
+
+        const r = 200;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        star.startPos.set(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.sin(phi) * Math.sin(theta),
+            r * Math.cos(phi)
+        );
+
+        star.endPos.copy(star.startPos).add(new THREE.Vector3(
+            (Math.random() - 0.5) * 200,
+            (Math.random() - 0.5) * 200,
+            (Math.random() - 0.5) * 200
+        ));
+    }
+
+    updateShootingStars() {
+        if (Math.random() < 0.03) this.spawnShootingStar();
+
+        this.shootingStars.forEach(star => {
+            if (!star.active) return;
+            star.progress += star.speed;
+            if (star.progress >= 1) {
+                star.active = false;
+                star.mesh.visible = false;
+                return;
+            }
+            const currentPos = new THREE.Vector3().lerpVectors(star.startPos, star.endPos, star.progress);
+            const tailPos = new THREE.Vector3().lerpVectors(star.startPos, star.endPos, Math.max(0, star.progress - 0.1));
+            const positions = star.mesh.geometry.attributes.position.array;
+            positions[0] = currentPos.x; positions[1] = currentPos.y; positions[2] = currentPos.z;
+            positions[3] = tailPos.x; positions[4] = tailPos.y; positions[5] = tailPos.z;
+            star.mesh.geometry.attributes.position.needsUpdate = true;
+            star.mesh.material.opacity = 1.0 - star.progress;
+        });
+    }
+
+    spawnFirework() {
+        const particleCount = 50;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        const startPos = new THREE.Vector3(
+            (Math.random() - 0.5) * 100,
+            (Math.random() - 0.5) * 50,
+            (Math.random() - 0.5) * 100
+        );
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = startPos.x;
+            positions[i * 3 + 1] = startPos.y;
+            positions[i * 3 + 2] = startPos.z;
+            velocities.push(new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            ));
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.PointsMaterial({
+            color: new THREE.Color().setHSL(Math.random(), 1.0, 0.5),
+            size: 0.5,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+
+        const points = new THREE.Points(geometry, material);
+        this.group.add(points);
+
+        this.fireworks.push({ mesh: points, velocities: velocities, life: 1.0 });
+    }
+
+    updateFireworks() {
+        for (let i = this.fireworks.length - 1; i >= 0; i--) {
+            const fw = this.fireworks[i];
+            fw.life -= 0.02;
+            if (fw.life <= 0) {
+                this.group.remove(fw.mesh);
+                fw.mesh.geometry.dispose();
+                fw.mesh.material.dispose();
+                this.fireworks.splice(i, 1);
+                continue;
+            }
+
+            const positions = fw.mesh.geometry.attributes.position.array;
+            for (let j = 0; j < fw.velocities.length; j++) {
+                positions[j * 3] += fw.velocities[j].x;
+                positions[j * 3 + 1] += fw.velocities[j].y;
+                positions[j * 3 + 2] += fw.velocities[j].z;
+            }
+            fw.mesh.geometry.attributes.position.needsUpdate = true;
+            fw.mesh.material.opacity = fw.life;
+        }
+    }
+
+    update(time, audioData) {
+        this.uniforms.uTime.value = time;
+        // Smoother Lerp
+        this.uniforms.uAudioLow.value = THREE.MathUtils.lerp(this.uniforms.uAudioLow.value, audioData.low, 0.15);
+        this.uniforms.uAudioMid.value = THREE.MathUtils.lerp(this.uniforms.uAudioMid.value, audioData.mid, 0.15);
+        this.uniforms.uAudioHigh.value = THREE.MathUtils.lerp(this.uniforms.uAudioHigh.value, audioData.high, 0.15);
+
+        // Core Rotation
+        this.core.rotation.y += 0.01 + audioData.low * 0.05;
+        this.core.rotation.z += 0.01 + audioData.low * 0.05;
+
+        // Update Shooting Stars
+        this.updateShootingStars();
+
+        // Fireworks on Bass
+        if (audioData.low > 0.7 && Math.random() < 0.1) {
+            this.spawnFirework();
+        }
+        this.updateFireworks();
+
+        // Camera Motion
+        this.group.rotation.y = Math.sin(time * 0.05) * 0.2;
+
+        // Slight Grid Rotation
+        this.floorGrid.rotation.z = Math.sin(time * 0.1) * 0.1;
+        this.ceilGrid.rotation.z = Math.cos(time * 0.1) * 0.1;
+    }
+
+    dispose() {
+        this.scene.remove(this.group);
+        this.core.geometry.dispose();
+        this.core.material.dispose();
+        this.diskMesh.geometry.dispose();
+        this.diskMesh.material.dispose();
+        this.auroraMesh.geometry.dispose();
+        this.auroraMesh.material.dispose();
+        this.floorGrid.geometry.dispose();
+        this.floorGrid.material.dispose();
+        this.ceilGrid.geometry.dispose();
+        this.ceilGrid.material.dispose();
+        this.starMesh.geometry.dispose();
+        this.starMesh.material.dispose();
+        this.shootingStars.forEach(s => {
+            s.mesh.geometry.dispose();
+            s.mesh.material.dispose();
+        });
+        if (this.shootingStarMaterial) this.shootingStarMaterial.dispose();
+        this.fireworks.forEach(fw => {
+            fw.mesh.geometry.dispose();
+            fw.mesh.material.dispose();
+        });
+    }
 }
 
 class VisualizerManager {
@@ -1671,6 +2489,16 @@ class VisualizerManager {
                 this.camera.position.set(0, 5, 30);
                 this.camera.lookAt(0, 10, 0);
                 this.currentEffect = new LightningStormEffect(this.scene);
+                break;
+            case 'reactor':
+                this.camera.position.set(0, 0, 40);
+                this.camera.lookAt(0, 0, 0);
+                this.currentEffect = new AudioReactorEffect(this.scene);
+                break;
+            case 'multiverse':
+                this.camera.position.set(0, 0, 50);
+                this.camera.lookAt(0, 0, 0);
+                this.currentEffect = new MultiverseEffect(this.scene);
                 break;
         }
     }
