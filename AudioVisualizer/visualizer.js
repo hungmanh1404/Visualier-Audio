@@ -74,7 +74,9 @@ class CosmicEffect {
             uTime: { value: 0 },
             uAudioLow: { value: 0 },
             uAudioMid: { value: 0 },
-            uAudioHigh: { value: 0 }
+            uAudioHigh: { value: 0 },
+            uMouse: { value: new THREE.Vector2(0, 0) },
+            uDragging: { value: 0.0 }
         };
 
         // 1. Central Rainbow Galaxy
@@ -354,16 +356,25 @@ class CosmicEffect {
 
                 void main() {
                     float theta = vUv.x * 6.2831853;
-                    vec3 noisePos = vec3(cos(theta), sin(theta), vUv.y * 2.0 - uTime * 0.3);
-                    float noise = snoise(noisePos * 2.0);
+                    // Slower, smoother noise
+                    vec3 noisePos = vec3(cos(theta), sin(theta), vUv.y * 1.5 - uTime * 0.1);
+                    float noise = snoise(noisePos * 1.5);
+                    
                     float alpha = smoothstep(0.0, 1.0, noise * 0.5 + 0.5);
                     float edgeFade = 1.0 - abs(vUv.y - 0.5) * 2.0;
                     alpha *= edgeFade;
-                    vec3 colorA = vec3(0.0, 1.0, 0.8); 
-                    vec3 colorB = vec3(0.8, 0.0, 1.0); 
-                    vec3 color = mix(colorA, colorB, vUv.y + sin(uTime));
-                    color += vec3(uAudioHigh * 0.5);
-                    gl_FragColor = vec4(color, alpha * 0.4 * (1.0 + uAudioLow));
+                    
+                    // Soft, ethereal colors
+                    vec3 colorA = vec3(0.0, 0.2, 0.4); // Deep Blue
+                    vec3 colorB = vec3(0.2, 0.0, 0.3); // Deep Purple
+                    
+                    vec3 color = mix(colorA, colorB, vUv.y + sin(uTime * 0.5) * 0.5);
+                    
+                    // Subtle highlight
+                    color += vec3(uAudioHigh * 0.2);
+                    
+                    // Very low opacity for "ghostly" look
+                    gl_FragColor = vec4(color, alpha * 0.2 * (1.0 + uAudioLow * 0.5));
                 }
             `
         });
@@ -403,8 +414,8 @@ class CosmicEffect {
                 void main() {
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                     gl_Position = projectionMatrix * mvPosition;
-                    float twinkle = 1.0 + sin(uTime * (1.0 + aSpeed * 3.0) + position.x) * 0.5;
-                    gl_PointSize = aScale * (400.0 / -mvPosition.z) * twinkle;
+                    float twinkle = 1.0 + sin(uTime * (0.5 + aSpeed) + position.x) * 0.3; // Slower twinkle
+                    gl_PointSize = aScale * (200.0 / -mvPosition.z) * twinkle; // Smaller stars
                 }
             `,
             fragmentShader: `
@@ -413,7 +424,7 @@ class CosmicEffect {
                     float dist = length(uv);
                     if(dist > 0.5) discard;
                     float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
-                    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * 0.8); // Slightly reduced opacity
                 }
             `
         });
@@ -499,7 +510,7 @@ class CosmicEffect {
         });
     }
 
-    update(time, audioData) {
+    update(time, audioData, mouse, isDragging) {
         this.uniforms.uTime.value = time;
         this.uniforms.uAudioLow.value = THREE.MathUtils.lerp(this.uniforms.uAudioLow.value, audioData.low, 0.1);
         this.uniforms.uAudioMid.value = THREE.MathUtils.lerp(this.uniforms.uAudioMid.value, audioData.mid, 0.1);
@@ -508,6 +519,12 @@ class CosmicEffect {
         // Dynamic Rotation
         const rotationSpeed = 0.05 + (this.uniforms.uAudioLow.value * 0.2);
         this.group.rotation.y += rotationSpeed * 0.016;
+
+        // Mouse Interaction
+        if (isDragging) {
+            this.group.rotation.y += mouse.x * 0.05;
+            this.group.rotation.x += mouse.y * 0.05;
+        }
 
         // Cinematic Camera Motion (Lissajous Curve)
         this.group.position.x = Math.sin(time * 0.2) * 5;
@@ -766,12 +783,18 @@ class LightShowEffect {
         this.group.add(this.particles);
     }
 
-    update(time, audioData) {
+    update(time, audioData, mouse, isDragging) {
         this.uniforms.uTime.value = time;
         this.uniforms.uAudio.value = audioData.mid;
 
         this.mesh.rotation.x = time * 0.2;
         this.mesh.rotation.y = time * 0.3;
+
+        // Mouse Interaction
+        if (isDragging) {
+            this.mesh.rotation.y += mouse.x * 0.1;
+            this.mesh.rotation.x += mouse.y * 0.1;
+        }
 
         // Scale with bass
         const s = 2 + audioData.low * 3;
@@ -1613,7 +1636,9 @@ class AudioReactorEffect {
             uTime: { value: 0 },
             uAudioLow: { value: 0 },
             uAudioMid: { value: 0 },
-            uAudioHigh: { value: 0 }
+            uAudioHigh: { value: 0 },
+            uMouse: { value: new THREE.Vector2(0, 0) },
+            uDragging: { value: 0.0 }
         };
 
         // 1. Reactor Core (Deforming Icosahedron)
@@ -1796,7 +1821,7 @@ class AudioReactorEffect {
         this.group.add(this.ceilGrid);
     }
 
-    update(time, audioData) {
+    update(time, audioData, mouse, isDragging) {
         this.uniforms.uTime.value = time;
         // Smoother Lerp
         this.uniforms.uAudioLow.value = THREE.MathUtils.lerp(this.uniforms.uAudioLow.value, audioData.low, 0.15);
@@ -1806,6 +1831,12 @@ class AudioReactorEffect {
         // Core Rotation
         this.core.rotation.y += 0.01 + audioData.low * 0.05;
         this.core.rotation.z += 0.01 + audioData.low * 0.05;
+
+        // Mouse Interaction
+        if (isDragging) {
+            this.core.rotation.y += mouse.x * 0.1;
+            this.core.rotation.x += mouse.y * 0.1;
+        }
 
         // Rings
         this.rings.forEach((r, i) => {
@@ -1847,7 +1878,9 @@ class MultiverseEffect {
             uTime: { value: 0 },
             uAudioLow: { value: 0 },
             uAudioMid: { value: 0 },
-            uAudioHigh: { value: 0 }
+            uAudioHigh: { value: 0 },
+            uMouse: { value: new THREE.Vector2(0, 0) },
+            uDragging: { value: 0.0 }
         };
 
         // 1. Reactor Core (Icosahedron)
@@ -2381,7 +2414,7 @@ class MultiverseEffect {
         }
     }
 
-    update(time, audioData) {
+    update(time, audioData, mouse, isDragging) {
         this.uniforms.uTime.value = time;
         // Smoother Lerp
         this.uniforms.uAudioLow.value = THREE.MathUtils.lerp(this.uniforms.uAudioLow.value, audioData.low, 0.15);
@@ -2391,6 +2424,12 @@ class MultiverseEffect {
         // Core Rotation
         this.core.rotation.y += 0.01 + audioData.low * 0.05;
         this.core.rotation.z += 0.01 + audioData.low * 0.05;
+
+        // Mouse Interaction
+        if (isDragging) {
+            this.group.rotation.y += mouse.x * 0.02;
+            this.group.rotation.x += mouse.y * 0.02;
+        }
 
         // Update Shooting Stars
         this.updateShootingStars();
@@ -2462,6 +2501,47 @@ class VisualizerManager {
         this.composer.addPass(renderScene);
         this.composer.addPass(this.bloomPass);
 
+        // Mouse State
+        this.mouse = new THREE.Vector2(0, 0);
+        this.targetMouse = new THREE.Vector2(0, 0);
+        this.isDragging = false;
+
+        // Event Listeners for Mouse
+        window.addEventListener('mousemove', (e) => {
+            // Normalize mouse to -1 to 1
+            this.targetMouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.targetMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            if (this.isDragging) {
+                // Direct mapping during drag
+                this.mouse.copy(this.targetMouse);
+            }
+        });
+
+        window.addEventListener('mousedown', () => { this.isDragging = true; });
+        window.addEventListener('mouseup', () => { this.isDragging = false; });
+
+        // Touch support
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                this.targetMouse.x = (e.touches[0].clientX / window.innerWidth) * 2 - 1;
+                this.targetMouse.y = -(e.touches[0].clientY / window.innerHeight) * 2 + 1;
+                if (this.isDragging) this.mouse.copy(this.targetMouse);
+            }
+        }, { passive: false });
+        window.addEventListener('touchstart', () => { this.isDragging = true; }, { passive: false });
+        window.addEventListener('touchend', () => { this.isDragging = false; });
+
+        // Mouse Wheel Zoom
+        window.addEventListener('wheel', (e) => {
+            // Zoom speed
+            const zoomSpeed = 0.05;
+            // Move camera along its local Z axis (forward/backward)
+            // e.deltaY > 0 means scrolling down (zoom out), < 0 means scrolling up (zoom in)
+            const delta = e.deltaY * zoomSpeed;
+            this.camera.translateZ(delta);
+        }, { passive: true });
+
         this.currentEffect = null;
         this.switchMode('cosmic');
 
@@ -2497,7 +2577,7 @@ class VisualizerManager {
                 this.currentEffect = new LightShowEffect(this.scene);
                 break;
             case 'fireworks':
-                this.camera.position.set(0, 5, 40); // Further back for fireworks
+                this.camera.position.set(0, 5, 40);
                 this.camera.lookAt(0, 10, 0);
                 this.currentEffect = new FireworksEffect(this.scene);
                 break;
@@ -2561,8 +2641,11 @@ class VisualizerManager {
         const time = performance.now() * 0.001;
         const audioData = this.getAudioData(time);
 
+        // Smooth mouse interpolation
+        this.mouse.lerp(this.targetMouse, 0.1);
+
         if (this.currentEffect) {
-            this.currentEffect.update(time, audioData);
+            this.currentEffect.update(time, audioData, this.mouse, this.isDragging);
         }
 
         this.composer.render();
